@@ -1,7 +1,8 @@
-#include "arq_packet.h"
+#include "helper_functions.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -123,24 +124,13 @@ void receive_data(const int sock) {
       int crc_status = receive_packet(sock, &last_received, &read_size);
         //If all goes well, send back an ACK
         if(crc_status){
-          //If the packet is in order display the content
-          if(last_received.number == packet_number) {
-            printf("Received Packet: Type: %d, Number: %d, Data: %c %c\n", last_received.type, last_received.number, last_received.data[0], last_received.data[1]);
+            sleep(1);
+            printf("Received Packet: Number: %d, Data: %c %c\n",last_received.number, last_received.data[0], last_received.data[1]);
             reply.number = last_received.number;
             packet_number++;
-            //Display the sequence number if the packet is out of sequence
-          } else {
-            printf("Recieved Packet: Number: %d out of order\n", last_received.number);
-            reply.number = last_received.number;
-          }
-          reply.type = ACK;
-          //This packet had a bad CRC send a NAK
-        } else {
-          printf("Recieved Packet: Number: %d with an error\n", last_received.number);
-          reply.type = NAK;
-          reply.number = packet_number;
-        }
-      send_packet(sock, &reply);
+          //This packet had a bad CRC 
+        }       
+        send_packet(sock, &reply);
     }
   }
 }

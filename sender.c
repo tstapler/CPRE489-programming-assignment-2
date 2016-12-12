@@ -1,4 +1,4 @@
-#include "arq_packet.h"
+#include "helper_functions.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,7 +11,7 @@
 #include <errno.h>
 
 int  openTCPConnection (const char * const ip, const int port);
-void load_next_packet(packet *pkt, int packet_number, char *message);
+void load_next_packet(packet *pkt, int sequence_number, char *message);
 void TwoWayComm(const int sock);
 void shift_array(int *array, int size, int amount);
 void send_data(const int sock, char *message);
@@ -104,15 +104,17 @@ void send_data(const int sock, char *message) {
   int read_size;
   int buffer_len = 0;
   int state  = NOT_DONE;
-  int window = 0;
-  int packet_number = 0;
+  int phase = SS;
+  int congestion_window = 1;
+  int sswindow = 16;
+  int sequence_number = 0;
   int i = 0;
 
   int msg_size = strlen(message);
 
-  int window_sent[WINDOW_SIZE];
+  int window_sent[1000];
 
-  for(i = 0; i < WINDOW_SIZE; i++) {
+  for(i = 0; i < congestion_window; i++) {
     window_sent[i] = 0;
   }
 
@@ -120,9 +122,9 @@ void send_data(const int sock, char *message) {
   packet last_received = {};
 
   while(state == NOT_DONE) {
-    for(i = 0; i < WINDOW_SIZE && i < msg_size/2 - packet_number; i++) {
-        load_next_packet(&pkt, packet_number + i, message);
-        printf("Sending Packet: Type: %d, Number: %d, Data: %c %c\n", pkt.type, pkt.number, pkt.data[0], pkt.data[1]);
+    for(i = 0; i < congestion_window && i < msg_size/2 - sequence_number; i++) {
+        load_next_packet(&pkt, sequence_number + i, message);
+        printf("Sending Packet: Number: %d, Data: %c %c\n", pkt.number, pkt.data[0], pkt.data[1]);
         send_packet(sock, &pkt);
     }
 
@@ -130,40 +132,37 @@ void send_data(const int sock, char *message) {
 
     // Get replies from the receiver if they exist
     while(buffer_len > 0) {
-      receive_packet(sock, &last_received, &read_size);
-      if(last_received.type == ACK) {
-        window_sent[last_received.number - packet_number] = 2;
-        printf("Receiver's reply: Type: %d, Number: %d\n", last_received.type, last_received.number);
-      } else if(last_received.type == NAK){
-        window_sent[last_received.number - packet_number] = -1;
-      }
+        int reply_sequence_num = receive_ack(sock);
+
+        window_sent[sequence_number] = 2;
+        printf("Receiver's reply: Number: %d\n", last_received.number);
       ioctl(sock, FIONREAD, &buffer_len);
     }
     int shift_by = 0;
 
     //Check for which packets have been ack'd
     //move the window accordingly
-    for(i = 0; i < WINDOW_SIZE; i++){
+    for(i = 0; i < congestion_window; i++){
       if(window_sent[i] == -1){
         break;
       } else if(window_sent[i] == 2){
-        packet_number++;
+        sequence_number++;
         window_sent[i] = 0;
         shift_by++;
       }
     }
 
-    shift_array(&window_sent, WINDOW_SIZE, shift_by);
+    shift_array(&window_sent, congestion_window, shift_by);
 
     //Have we sent all the stuff yet?
-    if(packet_number >=  msg_size/2){
+    if(sequence_number >=  msg_size/2){
       state = DONE;
     }
   }
 }
 
-void load_next_packet(packet *pkt, int packet_number, char *message) {
-  fill_packet(pkt, DATA, packet_number, message[packet_number*2], message[packet_number*2 + 1]);
+void load_next_packet(packet *pkt, int sequence_number, char *message) {
+  fill_packet(pkt, sequence_number, message[sequence_number*2], message[sequence_number*2 + 1]);
 }
 
 void shift_array(int *array, int size, int amount) {
