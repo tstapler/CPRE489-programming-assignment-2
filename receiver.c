@@ -1,3 +1,4 @@
+#include "arq_packet.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +21,13 @@ int main(int argc, char *argv[]) {
 	int  recv_sock  = openTCPConnection(local_ip, local_port);
 	int  accpt_sock = acceptTCPConnection(recv_sock);
 	
+  int packet_number = 0;
+	
+  packet receive_buff[WINDOW_SIZE]; 
+
+  initialize_packet_buff(receive_buff, WINDOW_SIZE);
+
+  packet last_received = {};
 	//Write your code here
 	
 	
@@ -29,14 +37,13 @@ int main(int argc, char *argv[]) {
 	// ...
 	
 	
+  /* if(!receive_packet(accpt_sock, last_received)){ */
+  /*   printf("Recieved data with bad crc\n"); */
+  /* } */
 	
+  /* printf("Received Data: %c %c\n", last_received.data[0], last_received.data[1]); */
 	
-	
-	TwoWayComm(accpt_sock);  //Demo
-	
-	
-	
-	
+  TwoWayComm(accpt_sock);
 	
 	// ...
 	

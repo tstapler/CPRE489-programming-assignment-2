@@ -1,3 +1,4 @@
+#include "arq_packet.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,8 +10,10 @@
 #include <errno.h>
 
 int  openTCPConnection (const char * const ip, const int port);
+void load_next_packet(packet *pkt, int packet_number);
 void TwoWayComm(const int sock);
 
+const char payload[27] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const int TIMEOUT = 3;   //3s time-out
 
 int main(int argc, char *argv[]) {
@@ -22,31 +25,9 @@ int main(int argc, char *argv[]) {
 	int    remote_port = atoi(argv[2]);
 	double ber         = atof(argv[3]);
 	int    sender_sock = openTCPConnection(remote_ip, remote_port);
-	
 	//Write your code here
 	
-	
-	
-	
-	
-	// ...
-	
-	
-	
-	
-	
-	TwoWayComm(sender_sock);  //Demo
-	
-	
-	
-	
-	
-	// ...
-	
-	
-	
-	
-	
+  send_data(sender_sock);
 	
 	//End of your code
 	
@@ -82,7 +63,6 @@ int openTCPConnection(const char * const remote_ip, const int remote_port) {
 	return(sock);
 }
 
-
 void TwoWayComm(const int sock) {
 	int  read_size;
     char msg[100], reply[150];
@@ -115,4 +95,42 @@ void TwoWayComm(const int sock) {
 		reply[read_size] = '\0';
         printf("Receiver's reply: %s\n", reply);
     }	
+}
+
+void send_data(const int sock) {
+  int  read_size;
+  char msg[100], reply[150];
+  int state  = NOT_DONE;
+  int window = 0;
+  int packet_number = 0;
+
+  packet window_buff[WINDOW_SIZE]; 
+
+  initialize_packet_buff(window_buff, WINDOW_SIZE);
+
+  packet pkt = window_buff[0];
+  packet last_received = {};
+  while(packet_number < 13) {
+    load_next_packet(&pkt, packet_number);
+
+      // Send some data to the receiver
+      // msg         - the message to be sent
+      // strlen(msg) - length of the message
+      // If return value < 0, an error occurred.
+    printf("Sending Packet: Type: %d, Number: %d, Data: %c %c\n", pkt.type, pkt.number, pkt.data[0], pkt.data[1]);
+    send_packet(sock, &pkt);
+
+      // Receive a reply from the receiver
+      // NOTE: If you have more data than 149 bytes, it will be received in the next call to "read"
+      // read_size - the length of the received message or -1 indicating an error
+      // reply     - a buffer where the received message will be stored
+      // 149       - the size of the receiving buffer (any more data will be delivered in subsequent "read" operations
+    receive_packet(sock, &last_received);
+    printf("Receiver's reply: Type: %d, Number: %d Data: %c %c\n", last_received.type, last_received.number, last_received.data[0], last_received.data[1]);
+    packet_number++;
+  }	
+}
+
+void load_next_packet(packet *pkt, int packet_number) {
+  fill_packet(pkt, DATA, packet_number, payload[packet_number*2], payload[packet_number*2 + 1]);
 }
