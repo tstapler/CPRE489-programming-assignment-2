@@ -18,9 +18,9 @@ typedef struct {
 
 void send_packet(int sockfd, packet *pkt);
 
-int receive_packet(int sockfd, packet *pkt);
+int receive_packet(int sockfd, packet *pkt, int *read_size);
 
-void fill_packet(packet *pkt, int type, int number, char data1, char data2);
+void fill_packet(packet *pkt, unsigned int type, unsigned int number, char data1, char data2);
 
 void initialze_packet_buff(packet *window_buff, char *message);
 #endif

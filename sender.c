@@ -6,12 +6,15 @@
 #include <sys/types.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <errno.h>
 
 int  openTCPConnection (const char * const ip, const int port);
-void load_next_packet(packet *pkt, int packet_number);
+void load_next_packet(packet *pkt, int packet_number, char *message);
 void TwoWayComm(const int sock);
+void shift_array(int *array, int size, int amount);
+void send_data(const int sock, char *message);
 
 const char payload[27] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const int TIMEOUT = 3;   //3s time-out
@@ -27,7 +30,7 @@ int main(int argc, char *argv[]) {
 	int    sender_sock = openTCPConnection(remote_ip, remote_port);
 	//Write your code here
 	
-  send_data(sender_sock);
+  send_data(sender_sock, payload);
 	
 	//End of your code
 	
@@ -97,40 +100,74 @@ void TwoWayComm(const int sock) {
     }	
 }
 
-void send_data(const int sock) {
-  int  read_size;
-  char msg[100], reply[150];
+void send_data(const int sock, char *message) {
+  int read_size;
+  int buffer_len = 0;
   int state  = NOT_DONE;
   int window = 0;
   int packet_number = 0;
+  int i = 0;
 
-  packet window_buff[WINDOW_SIZE]; 
+  int msg_size = strlen(message);
 
-  initialize_packet_buff(window_buff, WINDOW_SIZE);
+  int window_sent[WINDOW_SIZE];
 
-  packet pkt = window_buff[0];
+  for(i = 0; i < WINDOW_SIZE; i++) {
+    window_sent[i] = 0;
+  }
+
+  packet pkt = {};
   packet last_received = {};
-  while(packet_number < 13) {
-    load_next_packet(&pkt, packet_number);
 
-      // Send some data to the receiver
-      // msg         - the message to be sent
-      // strlen(msg) - length of the message
-      // If return value < 0, an error occurred.
-    printf("Sending Packet: Type: %d, Number: %d, Data: %c %c\n", pkt.type, pkt.number, pkt.data[0], pkt.data[1]);
-    send_packet(sock, &pkt);
+  while(state == NOT_DONE) {
+    for(i = 0; i < WINDOW_SIZE && i < msg_size/2 - packet_number; i++) {
+        load_next_packet(&pkt, packet_number + i, message);
+        printf("Sending Packet: Type: %d, Number: %d, Data: %c %c\n", pkt.type, pkt.number, pkt.data[0], pkt.data[1]);
+        send_packet(sock, &pkt);
+    }
 
-      // Receive a reply from the receiver
-      // NOTE: If you have more data than 149 bytes, it will be received in the next call to "read"
-      // read_size - the length of the received message or -1 indicating an error
-      // reply     - a buffer where the received message will be stored
-      // 149       - the size of the receiving buffer (any more data will be delivered in subsequent "read" operations
-    receive_packet(sock, &last_received);
-    printf("Receiver's reply: Type: %d, Number: %d Data: %c %c\n", last_received.type, last_received.number, last_received.data[0], last_received.data[1]);
-    packet_number++;
-  }	
+    ioctl(sock, FIONREAD, &buffer_len);
+
+    // Get replies from the receiver if they exist
+    while(buffer_len > 0) {
+      receive_packet(sock, &last_received, &read_size);
+      if(last_received.type == ACK) {
+        window_sent[last_received.number - packet_number] = 2;
+        printf("Receiver's reply: Type: %d, Number: %d\n", last_received.type, last_received.number);
+      } else if(last_received.type == NAK){
+        window_sent[last_received.number - packet_number] = -1;
+      }
+      ioctl(sock, FIONREAD, &buffer_len);
+    }
+    int shift_by = 0;
+
+    //Check for which packets have been ack'd
+    //move the window accordingly
+    for(i = 0; i < WINDOW_SIZE; i++){
+      if(window_sent[i] == -1){
+        break;
+      } else if(window_sent[i] == 2){
+        packet_number++;
+        window_sent[i] = 0;
+        shift_by++;
+      }
+    }
+
+    shift_array(&window_sent, WINDOW_SIZE, shift_by);
+
+    //Have we sent all the stuff yet?
+    if(packet_number >=  msg_size/2){
+      state = DONE;
+    }
+  }
 }
 
-void load_next_packet(packet *pkt, int packet_number) {
-  fill_packet(pkt, DATA, packet_number, payload[packet_number*2], payload[packet_number*2 + 1]);
+void load_next_packet(packet *pkt, int packet_number, char *message) {
+  fill_packet(pkt, DATA, packet_number, message[packet_number*2], message[packet_number*2 + 1]);
+}
+
+void shift_array(int *array, int size, int amount) {
+  for(int i = size; i > amount; i--) {
+    array[i] = array[i-1];
+  }
 }

@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <stdio.h> 
 #include <string.h>    
 #include <sys/socket.h>    
@@ -26,10 +27,9 @@ void send_packet(int sockfd, packet *pkt) {
             perror("Send failed");
 }
 
-int receive_packet(int sockfd, packet *pkt) {
+int receive_packet(int sockfd, packet *pkt, int *read_size) {
     unsigned char reply[150];
-    int read_size;
-        // Receive a reply from the server
+    // Receive a reply from the server
 		// NOTE: If you have more data than 149 bytes, it will 
 		// 			be received in the next call to "recv"
 		// read_size - the length of the received message 
@@ -38,26 +38,29 @@ int receive_packet(int sockfd, packet *pkt) {
 		// 149 - the size of the receiving buffer (any more data will be 
 		// 		delievered in subsequent "recv" operations
 		// 0 - Options and are not necessary here
-        if( (read_size = recv(sockfd , reply , 149 , 0)) < 0)
-            perror("recv failed");
+    if( (read_size = recv(sockfd, reply, sizeof(packet), 0)) < 0)
+        perror("recv failed");
 
     // Might move back to receiver
     if(read_size == 0)
     {
       puts("Client disconnected");
       fflush(stdout);
+      exit(0);
     }
         
-    short int good_crc = calculate_CCITT16(reply, 4, GENERATE_CRC);
+    short int good_crc = calculate_CCITT16(reply, 4, CHECK_CRC);
 
     if(good_crc){
-      fill_packet(&pkt, reply[0], reply[1], reply[2], reply[3]);
+      fill_packet(pkt, reply[0], (unsigned int) reply[1], reply[2], reply[3]);
+    } else {
+      printf("CRC indicates bad message");
     }
 
     return good_crc;
 }
 
-void fill_packet(packet *pkt, int type, int number, char data1, char data2){
+void fill_packet(packet *pkt, unsigned int type, unsigned int number, char data1, char data2){
        pkt->type = type;
        pkt->number = number;
        pkt->data[0] = data1;

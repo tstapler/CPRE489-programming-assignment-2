@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -10,6 +11,7 @@
 int openTCPConnection(const char * const ip, const int port);
 int acceptTCPConnection(const int sock);
 void TwoWayComm(const int sock);
+void receive_data(const int sock);
 
 int main(int argc, char *argv[]) {
 	if(argc != 3) {
@@ -21,29 +23,17 @@ int main(int argc, char *argv[]) {
 	int  recv_sock  = openTCPConnection(local_ip, local_port);
 	int  accpt_sock = acceptTCPConnection(recv_sock);
 	
-  int packet_number = 0;
-	
-  packet receive_buff[WINDOW_SIZE]; 
-
-  initialize_packet_buff(receive_buff, WINDOW_SIZE);
-
-  packet last_received = {};
 	//Write your code here
 	
 	
+  printf("The size of packet is %d\n", sizeof(packet));
 	
 	
 	
 	// ...
 	
 	
-  /* if(!receive_packet(accpt_sock, last_received)){ */
-  /*   printf("Recieved data with bad crc\n"); */
-  /* } */
-	
-  /* printf("Received Data: %c %c\n", last_received.data[0], last_received.data[1]); */
-	
-  TwoWayComm(accpt_sock);
+  receive_data(accpt_sock);
 	
 	// ...
 	
@@ -117,4 +107,40 @@ void TwoWayComm(const int sock){
     } else if(read_size == -1) {
         perror("recv() failed.\n");
     }
+}
+
+void receive_data(const int sock) {
+  int read_size = 0;
+  int packet_number = 0;
+  int buffer_len = 0;
+
+  while(1)  {
+    packet last_received = {};
+    packet reply = {};
+
+    ioctl(sock, FIONREAD, &buffer_len);
+    if(buffer_len > 0) {
+      int crc_status = receive_packet(sock, &last_received, &read_size);
+        //If all goes well, send back an ACK
+        if(crc_status){
+          //If the packet is in order display the content
+          if(last_received.number == packet_number) {
+            printf("Received Packet: Type: %d, Number: %d, Data: %c %c\n", last_received.type, last_received.number, last_received.data[0], last_received.data[1]);
+            reply.number = last_received.number;
+            packet_number++;
+            //Display the sequence number if the packet is out of sequence
+          } else {
+            printf("Recieved Packet: Number: %d out of order\n", last_received.number);
+            reply.number = last_received.number;
+          }
+          reply.type = ACK;
+          //This packet had a bad CRC send a NAK
+        } else {
+          printf("Recieved Packet: Number: %d with an error\n", last_received.number);
+          reply.type = NAK;
+          reply.number = packet_number;
+        }
+      send_packet(sock, &reply);
+    }
+  }
 }
